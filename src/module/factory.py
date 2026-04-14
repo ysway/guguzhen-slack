@@ -1,34 +1,35 @@
 import re
 
-from aiohttp import ClientSession
-
 from src.utils import request, config
-from src.utils.log import log
 
 
 class Factory(object):
 
-    def __init__(self, user_setting: dict, session: ClientSession):
-        self.session = session
+    def __init__(self, user_setting: dict, client):
+        self.client = client
         self.user_setting = user_setting
         self.sand_threshold = user_setting["factory"]
+        self.beach_setting = user_setting.get("beach", {})
         if self.sand_threshold > 10:
             self.sand_threshold = 10
         self.param = {
             "f": "21"
         }
-        self.headers = {
-            "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36",
-            "cookie": user_setting["cookie"],
-            "content-type": "application/x-www-form-urlencoded; charset=UTF-8"
-        }
+        self.headers = request.build_headers(form=True)
         self.url = "https://www.momozhen.com/fyg_read.php"
 
-    async def run(self):
+    def run(self):
+        should_clear_beach = self.beach_setting.get("clear_equipment", False)
+        if self.sand_threshold <= 0 and not should_clear_beach:
+            return
         # 刷新沙滩
-        await request.get("https://www.momozhen.com/fyg_beach.php", self.headers, self.session)
+        request.get("https://www.momozhen.com/fyg_beach.php", request.build_headers(), self.client)
+        if should_clear_beach:
+            self.clear_beach_equipment()
         # 获取星沙
-        res = await request.post_data(self.url, self.headers, self.param, self.session)
+        if self.sand_threshold <= 0:
+            return
+        res = request.post_data(self.url, self.headers, self.param, self.client)
         if not res:
             return
         pattern = r'已开采<br>(.*?)星沙'
@@ -38,15 +39,34 @@ class Factory(object):
         now_sand = int(match[0])
         # 判断收工
         if now_sand >= self.sand_threshold:
-            log.info(self.user_setting["username"] + "宝石工坊收工...")
+            print(self.user_setting["username"] + " 宝石工坊收工...")
             url = "https://www.momozhen.com/fyg_click.php"
             param = {
                 "safeid": self.user_setting["safeid"],
                 "c": "30"
             }
-            complete_res = await request.post_data(url, self.headers, param, self.session)
-            log.info(config.format_html(complete_res))
+            complete_res = request.post_data(url, self.headers, param, self.client)
+            print(config.format_html(complete_res))
             # 收完工立即开工
             if "收工统计" in complete_res:
-                start_res = await request.post_data(url, self.headers, param, self.session)
-                log.info(start_res)
+                start_res = request.post_data(url, self.headers, param, self.client)
+                print(config.format_html(start_res))
+        else:
+            print(
+                f"{self.user_setting['username']} 宝石工坊已开采 {now_sand} 星沙，"
+                f"未达到收工阈值 {self.sand_threshold}"
+            )
+
+    def clear_beach_equipment(self):
+        print(self.user_setting["username"] + " 清理沙滩装备...")
+        cleanup_url = "https://www.momozhen.com/fyg_click.php"
+        cleanup_param = {
+            "safeid": self.user_setting["safeid"],
+            "c": "20"
+        }
+        request.post_data(cleanup_url, self.headers, cleanup_param, self.client)
+
+        stall_param = {
+            "f": "1"
+        }
+        request.post_data(self.url, self.headers, stall_param, self.client)

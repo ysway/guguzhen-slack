@@ -1,144 +1,129 @@
-import hashlib
 import re
-import time
 
-from aiohttp import ClientSession
+from bs4 import BeautifulSoup
 
-from src.module.analysis import Analysis
 from src.module.clip import Clip
-from src.utils import request, config
-from src.utils.log import log
+from src.utils import config, request
 
 
 class Battle(object):
 
-    def __init__(self, user_setting: dict, session: ClientSession):
-        self.session = session
+    def __init__(self, user_setting: dict, client):
+        self.client = client
         self.user_setting = user_setting
         self.param = {
             "safeid": user_setting["safeid"],
             "id": ""
         }
-        self.headers = {
-            "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36",
-            "cookie": user_setting["cookie"],
-            "content-type": "application/x-www-form-urlencoded; charset=UTF-8"
-        }
+        self.headers = request.build_headers(form=True)
         self.url = "https://www.momozhen.com/fyg_v_intel.php"
-        # battle mode
-        self.battle_mode = user_setting["fight"]["battle_mode"]
-        if self.battle_mode < 0:
-            self.battle_mode = 0
-        if self.battle_mode > 4:
-            self.battle_mode = 4
-        # 使用药水次数
-        self.potion_count = user_setting["fight"]["use_potion"]
-        if self.potion_count < 0:
-            self.potion_count = 0
-        if self.potion_count > 2:
-            self.potion_count = 2
-        # 狗牌
+        self.battle_mode = max(0, min(user_setting["fight"]["battle_mode"], 4))
+        self.potion_count = max(0, min(user_setting["fight"]["use_potion"], 2))
         self.dog_card = 0
+        self.rank = ""
 
-    async def run(self):
+    def run(self):
         if self.battle_mode == 0:
             return
-        if self.battle_mode == 1 or self.battle_mode == 3:
-            # 打野
-            self.param["id"] = "1"
-            log.info(self.user_setting["username"] + "开始打野...")
-            await self.battle()
-        if self.battle_mode == 2 or self.battle_mode == 4:
-            # 打人
-            self.param["id"] = "2"
-            log.info(self.user_setting["username"] + "开始打人...")
-            await self.battle()
-        # 翻牌
-        if self.dog_card > 2:
-            await Clip(self.user_setting, self.session).run()
-        else:
-            log.info(self.user_setting["username"] + "狗牌不足！")
-        # 使用体力药水
-        if self.potion_count > 0:
-            use_bool = await self.use_potion()
-            if not use_bool:
-                return
-            self.potion_count -= 1
-            await self.run()
 
-    async def use_potion(self):
-        log.info(self.user_setting["username"] + "消耗两瓶药水恢复体力...")
+        if self.battle_mode in (1, 3):
+            self.param["id"] = "1"
+            print(self.user_setting["username"] + " 开始打野...")
+            self.run_battle_cycle()
+
+        if self.battle_mode in (2, 4):
+            self.param["id"] = "2"
+            print(self.user_setting["username"] + " 开始打人...")
+            self.run_battle_cycle()
+
+        self.handle_rewards()
+        self.try_use_potion()
+
+    def run_battle_cycle(self):
+        if self.should_stop_battle():
+            return
+
+        self.get_rank()
+        res = request.post_data(self.url, self.headers, self.param, self.client)
+        if res and res.startswith('<div class="row">'):
+            self.print_battle_result(res)
+            self.get_rank()
+            self.run_battle_cycle()
+            return
+
+        if res and "请重试" in res:
+            print(config.format_html(res))
+            self.run_battle_cycle()
+            return
+
+        print(config.format_html(res))
+        print(self.user_setting["username"] + " 结束战斗")
+        self.get_rank()
+
+    def should_stop_battle(self):
+        return self.battle_mode in (3, 4) and self.dog_card > 2
+
+    def handle_rewards(self):
+        if self.dog_card > 2:
+            Clip(self.user_setting, self.client).run()
+            return
+        print(self.user_setting["username"] + " 狗牌不足！")
+
+    def try_use_potion(self):
+        if self.potion_count <= 0:
+            return
+        if not self.use_potion():
+            return
+        self.potion_count -= 1
+        self.run()
+
+    def use_potion(self):
+        print(self.user_setting["username"] + " 消耗两瓶药水恢复体力...")
         param = {
             "safeid": self.user_setting["safeid"],
             "c": "13",
             "id": "2"
         }
         url = "https://www.momozhen.com/fyg_click.php"
-        res = await request.post_data(url, self.headers, param, self.session)
-        log.info(res)
-        if res and res.startswith("可出击数已刷新"):
-            return True
-        else:
-            return False
+        res = request.post_data(url, self.headers, param, self.client)
+        print(config.format_html(res))
+        return bool(res and res.startswith("可出击数已刷新"))
 
-    async def battle(self):
-        if self.battle_mode == 3 and self.dog_card > 2:
+    def print_battle_result(self, res: str):
+        user_name = self.user_setting["username"]
+        enemy_name = self.get_enemy_name(res)
+        if user_name + " 获得了胜利！" in res:
+            print(user_name + " 赢了 " + enemy_name)
             return
-        if self.battle_mode == 4 and self.dog_card > 2:
+        if "双方同归于尽！本场不计入胜负场次" in res:
+            print(user_name + " 平了 " + enemy_name)
             return
-        self.user_setting["battle"] = {
-            "type": "attack"
-        }
-        await self.get_rank()
-        res = await request.post_data(self.url, self.headers, self.param, self.session)
-        if res and res.startswith('<div class="row">'):
-            self.user_setting["battle"]["time"] = int(time.time() * 1000)
-            # 模拟收割机生成id
-            combined_string = res + str(self.user_setting["battle"]["time"])
-            self.user_setting["battle"]["id"] = hashlib.md5(combined_string.encode('utf-8')).hexdigest()
-            self.user_setting["log"] = res
-            # 获取输赢
-            user_name = self.user_setting["username"]
-            if user_name + " 获得了胜利！" in res:
-                self.user_setting["battle"]["isWin"] = "true"
-            elif "双方同归于尽！本场不计入胜负场次" in res:
-                self.user_setting["battle"]["isWin"] = "0"
-            else:
-                self.user_setting["battle"]["isWin"] = "false"
-            # 记录转换为收割机格式并写数据库
-            Analysis(self.user_setting).run()
-            # 打印输赢结果
-            enemy_name = self.user_setting["battle"]["enemyname"]
-            if self.user_setting["battle"]["isWin"] == "true":
-                log.info(user_name + " 赢了 " + enemy_name)
-            elif self.user_setting["battle"]["isWin"] == "0":
-                log.info(user_name + " 平了 " + enemy_name)
-            else:
-                log.info(user_name + " 输了 " + enemy_name)
-            # 刷新段位继续
-            await self.get_rank()
-            await self.battle()
-        elif "请重试" in res:
-            log.info(config.format_html(res))
-            await self.battle()
-        else:
-            log.info(config.format_html(res))
-            log.info(self.user_setting["username"] + "结束战斗")
-            await self.get_rank()
+        print(user_name + " 输了 " + enemy_name)
 
-    async def get_rank(self):
+    def get_rank(self):
         url = "https://www.momozhen.com/fyg_read.php"
         param = {
             "f": "12"
         }
-        res = await request.post_data(url, self.headers, param, self.session)
+        res = request.post_data(url, self.headers, param, self.client)
         if not res:
             return
+
         rank_pattern = r'font-weight:900;">(.*?)</span><br>当前所在段位'
         rank_matches = re.findall(rank_pattern, res)
         if rank_matches:
-            self.user_setting["battle"]["rank"] = rank_matches[0]
+            self.rank = rank_matches[0]
+
         dog_pattern = r'font-weight:700;">(.*?)</span><br>今日获得狗牌'
         dog_matches = re.findall(dog_pattern, res)
         if dog_matches:
             self.dog_card = int(dog_matches[0].split(" /")[0])
+
+    @staticmethod
+    def get_enemy_name(res: str):
+        battle_soup = BeautifulSoup(res, "html.parser")
+        for text in battle_soup.stripped_strings:
+            match = re.match(r'^(.*?)（(.*?) Lv\.(\d+)）$', text)
+            if match:
+                return match.group(1)
+        return "未知对手"

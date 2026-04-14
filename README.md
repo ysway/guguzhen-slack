@@ -1,50 +1,64 @@
 # guguzhen-slack
 
-咕咕镇摆烂小工具，自动化出击翻牌许愿工坊等日活，支持多账号和定时执行  
-请注意由于代码充斥大量神秘正则，每次咕咕镇版本更新后本工具可能会有不可预料的问题，如有问题请停止程序等待更新  
-本项目基于pycharm开发，开发环境为python 3.9  
+咕咕镇摆烂小工具的简化实现，保留多账号、续密钥、商店、许愿、战斗、翻牌和工坊功能。  
+当前版本改为单次顺序执行，不再内置定时调度、日志文件和数据库导出。运行信息直接打印到 stdout。  
+
+## 当前实现
+
+- 配置来源是 `config` 目录下的多个 `.yaml` 文件
+- 默认会优先读取项目根目录下的 `config`，也可用 `GUGUZHEN_CONFIG_DIR` 指定其他配置目录
+- 每次执行都会先尝试续密钥，随后继续执行其余已开启功能
+- 如果站点返回了新的 cookie，会自动回写到对应账号的 yaml 配置
+- HTTP 客户端使用 `httpx`，HTML 文本提取使用 `beautifulsoup4`
 
 ## 使用说明
-### Windows
-解压release最新版本的压缩包slack.zip，根据template.yaml修改配置文件，将配置文件复制到config文件夹内，有几个账号就放几个配置文件，配置文件的文件名随意但是后缀名一定要是.yaml，最后双击slack.exe运行程序  
-或使用Pyinstaller从源代码中打包，环境准备见下方Linux说明  
-~~~bash
-Pyinstaller -F slack.py
-~~~
-### Linux
-Linux下暂时需要从源代码运行  
-安装python3环境，建议3.9及以上  
-安装requirements.txt下依赖  
-~~~bash
-pip install -r requirements.txt
-~~~
-下载源代码  
-~~~bash
-git clone https://github.com/ilusrdbb/guguzhen-slack.git
-~~~
-按照如上Windows的说明修改配置文件，运行
-~~~bash
-python3 slack.py &
-~~~
 
-## 如何抓cookie
-打开f12控制台，切换到网络（network）选项卡  
-访问[咕咕镇首页](https://www.momozhen.com/fyg_index.php#)  
-控制台下方左侧会有一排请求，选择点击第一个，在右侧下拉找到Cookie: xxxxx，把xxxxx粘到yaml配置文件中  
+1. 安装 Python 3.9 或更高版本。
+2. 安装依赖。
+
+```bash
+pip install -r requirements.txt
+```
+
+1. 在项目根目录创建 `config` 文件夹。
+2. 把 [template.yaml](template.yaml) 复制为 `config/账号名.yaml`，每个账号一个文件。
+3. 把抓到的 cookie 粘贴到对应 yaml 的 `cookie` 字段。
+4. 运行脚本。
+
+```bash
+python slack.py
+```
+
+如果脚本不是从项目根目录启动，例如容器里直接执行绝对路径脚本，可以显式指定配置目录：
+
+```bash
+GUGUZHEN_CONFIG_DIR=/guguzhen/config python /guguzhen/slack.py
+```
+
+## 配置说明
+
+- `cookie`: 登录态 cookie，首次需要手动抓取
+- `shop.*`: 商店兑换和买药水开关
+- `beach.clear_equipment`: 是否清理沙滩装备并回收为锻造石
+- `wish`: 是否执行固定 300w 贝壳许愿 11 次
+- `fight.*`: 战斗模式、翻牌策略、药水使用次数
+- `factory`: 单次运行时执行一次工坊检查，填 `0` 跳过
+- `renew_key`: 是否在本次运行开头先执行续密钥，默认开启
+
+## 如何抓 cookie
+
+打开 F12 控制台，切换到网络（Network）选项卡。  
+访问 [咕咕镇首页](https://www.momozhen.com/fyg_index.php#)。  
+控制台下方左侧会有一排请求，点击第一个，在右侧下拉找到 `Cookie: xxxxx`，把 `xxxxx` 粘到 yaml 配置文件里。  
 ![示例](https://github.com/user-attachments/assets/d4b57462-3261-49b5-833c-920e0ab8ad70)
 
+## 不再提供的功能
 
-## 战斗记录导出
-解压release最新版本的压缩包export.zip，将摆烂主程序产生的slack.db复制到文件夹内，修改配置文件export.yaml，运行export.exe  
-此时文件夹内会生成一个韭菜收割机历史数据_xxxx.ggzjson的战斗记录文件  
-导出的战斗记录支持导入到收割机脚本中查看（只测试了chrome，可能有兼容问题）  
+- 不再实现 `scheduler` 定时配置
+- 不再写入 `slack.db`
+- 不再提供战斗记录导出工具
+- 不再生成日志文件
 
-## QA
-Q:那个slack.db是什么玩意，可以删吗  
-A:存储战斗记录的数据库，如果不需要导出战斗记录可以删  
-Q:我的沙滩可以搞自动化么  
-A:纯后端搞这种有些麻烦，建议使用前端脚本（比如光头佬的新数据采集）挂浏览器  
-Q:出击自动切装备护符啥的能做么  
-A:同样纯后端很难搞，而且这个功能可能会被恶意利用，不会做的  
-Q:好屎的代码，我要提pr羞辱你吔  
-A:非常欢迎，快点来罢
+## 说明
+
+项目仍然依赖页面返回结构。游戏页面更新后，如果接口或 HTML 结构变化，部分功能可能需要重新适配。

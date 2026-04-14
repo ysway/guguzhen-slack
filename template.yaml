@@ -9,6 +9,10 @@ shop:
   crystal_to_shell: false
   # 是否星沙换药水 直到星沙不足或每日上限为止
   sand_to_potion: false
+# 沙滩功能
+beach:
+  # 是否清理沙滩装备（所有沙滩装备回收为锻造石）
+  clear_equipment: false
 # 许愿池 固定300w贝壳许愿11次
 wish: false
 # 争夺战场
@@ -21,14 +25,7 @@ fight:
   flip_card_mode: 1
   # 使用药水恢复体力次数 0~2次 固定每次用两瓶药水
   use_potion: 0
-# 宝石工坊 检测到星沙数量大于设置数量时（2~10）就收工 填0不刷新 固定每20分钟刷新一次
+# 宝石工坊 单次运行时检测到星沙数量大于设置数量时（2~10）就收工 填0不执行
 factory: 3
-# 定时执行
-scheduler:
-  # 是否开启定时执行 由于定时线程并发设置为1 多个账号请不要都设置为同一个时间
-  enabled: true
-  # 每日执行时分
-  hour: 9
-  minute: 30
-# 每天1点自动续密钥 此项开启时其余配置全部失效
-renew_key: false
+# 每次运行默认先尝试续密钥，成功后会把最新 cookie 回写到 config 目录下对应的 yaml 中
+renew_key: true
