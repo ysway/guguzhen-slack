@@ -6,6 +6,10 @@ from src.module.clip import Clip
 from src.utils import config, request
 
 
+RANK_SEQUENCE = ("C", "CC", "CCC", "B", "BB", "BBB", "A", "AA", "AAA", "S", "SS", "SSS")
+RANK_VALUE = {rank: index for index, rank in enumerate(RANK_SEQUENCE)}
+
+
 class Battle(object):
 
     def __init__(self, user_setting: dict, client):
@@ -17,8 +21,9 @@ class Battle(object):
         }
         self.headers = request.build_headers(form=True)
         self.url = "https://www.momozhen.com/fyg_v_intel.php"
-        self.battle_mode = max(0, min(user_setting["fight"]["battle_mode"], 4))
+        self.battle_mode = max(0, min(user_setting["fight"]["battle_mode"], 6))
         self.potion_count = max(0, min(user_setting["fight"]["use_potion"], 2))
+        self.target_rank = self.normalize_rank(user_setting["fight"].get("target_rank")) or "C"
         self.dog_card = 0
         self.rank = ""
 
@@ -28,12 +33,12 @@ class Battle(object):
 
         self.get_rank()
         if not self.should_stop_battle():
-            if self.battle_mode in (1, 3):
+            if self.battle_mode in (1, 3, 5):
                 self.param["id"] = "1"
                 print(self.user_setting["username"] + " 开始打野...")
                 self.run_battle_cycle()
 
-            if self.battle_mode in (2, 4):
+            if self.battle_mode in (2, 4, 6):
                 self.param["id"] = "2"
                 print(self.user_setting["username"] + " 开始打人...")
                 self.run_battle_cycle()
@@ -58,12 +63,16 @@ class Battle(object):
             self.run_battle_cycle()
             return
 
-        print(config.format_html(res))
+        print(config.format_html(res or ""))
         print(self.user_setting["username"] + " 结束战斗")
         self.get_rank()
 
     def should_stop_battle(self):
-        return self.battle_mode in (3, 4) and self.dog_card > 2
+        if self.battle_mode in (3, 4):
+            return self.dog_card > 2
+        if self.battle_mode in (5, 6):
+            return self.dog_card > 2 and self.has_reached_target_rank()
+        return False
 
     def handle_rewards(self):
         if self.dog_card > 2:
@@ -88,7 +97,7 @@ class Battle(object):
         }
         url = "https://www.momozhen.com/fyg_click.php"
         res = request.post_data(url, self.headers, param, self.client)
-        print(config.format_html(res))
+        print(config.format_html(res or ""))
         return bool(res and res.startswith("可出击数已刷新"))
 
     def print_battle_result(self, res: str):
@@ -120,6 +129,19 @@ class Battle(object):
         dog_matches = re.findall(dog_pattern, res)
         if dog_matches:
             self.dog_card = int(dog_matches[0].split(" /")[0])
+
+    def has_reached_target_rank(self):
+        current_rank = self.normalize_rank(self.rank)
+        if not current_rank:
+            return False
+        return RANK_VALUE[current_rank] >= RANK_VALUE[self.target_rank]
+
+    @staticmethod
+    def normalize_rank(rank):
+        normalized_rank = re.sub(r"[^a-zA-Z]", "", str(rank or "")).upper()
+        if normalized_rank in RANK_VALUE:
+            return normalized_rank
+        return ""
 
     @staticmethod
     def get_enemy_name(res: str):

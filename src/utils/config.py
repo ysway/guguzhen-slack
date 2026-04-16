@@ -19,6 +19,7 @@ DEFAULT_CONFIG = {
     "wish": False,
     "fight": {
         "battle_mode": 2,
+        "target_rank": "S",
         "flip_card_mode": 1,
         "use_potion": 0,
     },

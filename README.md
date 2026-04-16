@@ -41,7 +41,7 @@ GUGUZHEN_CONFIG_DIR=/guguzhen/config python /guguzhen/slack.py
 - `shop.*`: 商店兑换和买药水开关
 - `beach.clear_equipment`: 是否清理沙滩装备并回收为锻造石
 - `wish`: 是否执行固定 300w 贝壳许愿 11 次
-- `fight.*`: 战斗模式、翻牌策略、药水使用次数
+- `fight.*`: 战斗模式、期望段位、翻牌策略、药水使用次数
 - `factory`: 单次运行时执行一次工坊检查，填 `0` 跳过
 - `renew_key`: 是否在本次运行开头先执行续密钥，默认开启
 
