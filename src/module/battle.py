@@ -26,15 +26,17 @@ class Battle(object):
         if self.battle_mode == 0:
             return
 
-        if self.battle_mode in (1, 3):
-            self.param["id"] = "1"
-            print(self.user_setting["username"] + " 开始打野...")
-            self.run_battle_cycle()
+        self.get_rank()
+        if not self.should_stop_battle():
+            if self.battle_mode in (1, 3):
+                self.param["id"] = "1"
+                print(self.user_setting["username"] + " 开始打野...")
+                self.run_battle_cycle()
 
-        if self.battle_mode in (2, 4):
-            self.param["id"] = "2"
-            print(self.user_setting["username"] + " 开始打人...")
-            self.run_battle_cycle()
+            if self.battle_mode in (2, 4):
+                self.param["id"] = "2"
+                print(self.user_setting["username"] + " 开始打人...")
+                self.run_battle_cycle()
 
         self.handle_rewards()
         self.try_use_potion()
